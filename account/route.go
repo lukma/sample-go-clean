@@ -10,6 +10,7 @@ func ApplyAccountRoute(router *gin.RouterGroup) {
 	{
 		group.POST("/login", service.NewAuthService().LoginHandler)
 		group.POST("/register", service.NewAuthService().RegisterHandler)
+		group.POST("/connectWithThirdParty", service.NewAuthService().ConnectWithThirdPartyHandler)
 		group.POST("/refreshToken", service.NewAuthService().RefreshTokenHandler)
 	}
 }

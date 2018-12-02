@@ -28,13 +28,7 @@ func (service *service) LoginHandler(c *gin.Context) {
 
 	var auth domain.AuthEntity
 	if err == nil {
-		auth, err = service.repository.GetAuth(form.FaID)
-	}
-
-	if err == nil {
-		err = service.repository.UpdateAuth(auth.ID.Hex(), domain.AuthEntity{
-			FcmID: form.FcmID,
-		})
+		auth, err = service.repository.GetAuthByUsernameOrEmail(form.Username, form.Password)
 	}
 
 	var token map[string]interface{}
@@ -49,14 +43,34 @@ func (service *service) RegisterHandler(c *gin.Context) {
 	var form domain.RegisterForm
 	err := c.Bind(&form)
 
-	id, err := service.repository.CreateAuth(domain.AuthEntity{
-		FaID:          form.FaID,
-		FcmID:         form.FcmID,
-		FacebookToken: form.FacebookToken,
-		GoogleToken:   form.GoogleToken,
-	})
+	var id string
+	if err == nil {
+		id, err = service.repository.CreateAuth(domain.AuthEntity{
+			Username: form.Username,
+			Password: form.Password,
+			FullName: form.FullName,
+			Email:    form.Email,
+		})
+	}
 
 	service.responseHandler(c, err, gin.H{"data": id})
+}
+
+func (service *service) ConnectWithThirdPartyHandler(c *gin.Context) {
+	var form domain.ConnectWithThirdPartyForm
+	err := c.Bind(&form)
+
+	var auth domain.AuthEntity
+	if err == nil {
+		auth, err = service.repository.GetAuthByThirdParty(form.ThirdParty, form.Token)
+	}
+
+	var token map[string]interface{}
+	if err == nil {
+		token, err = common.GenerateToken(auth.ID.Hex())
+	}
+
+	service.responseHandler(c, err, gin.H{"token": token})
 }
 
 func (service *service) RefreshTokenHandler(c *gin.Context) {
@@ -70,7 +84,7 @@ func (service *service) RefreshTokenHandler(c *gin.Context) {
 
 	auth := domain.AuthEntity{}
 	if err == nil {
-		service.repository.GetAuth(claims["client"].(string))
+		service.repository.GetAuthByID(claims["client"].(string))
 	}
 
 	token := map[string]interface{}{}

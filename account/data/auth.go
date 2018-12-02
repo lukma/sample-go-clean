@@ -9,6 +9,7 @@ import (
 	"firebase.google.com/go/auth"
 	"github.com/lukma/sample-go-clean/account/domain"
 	"github.com/lukma/sample-go-clean/common"
+	"golang.org/x/crypto/bcrypt"
 	mgo "gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 )
@@ -39,20 +40,49 @@ func NewAuthRepository() domain.AuthRepository {
 	}
 }
 
-func (data *data) GetAuth(faID string) (domain.AuthEntity, error) {
+func (data *data) GetAuthByID(id string) (domain.AuthEntity, error) {
 	var result domain.AuthEntity
-	err := data.collection.Find(bson.M{"fa_id": faID}).One(&result)
+	err := data.collection.FindId(bson.ObjectId(id)).One(&result)
+	return result, err
+}
+
+func (data *data) GetAuthByUsernameOrEmail(usernameOrEmail string, password string) (domain.AuthEntity, error) {
+	var result domain.AuthEntity
+	err := data.collection.Find(bson.M{
+		"$or": []bson.M{
+			bson.M{"username": usernameOrEmail},
+			bson.M{"email": usernameOrEmail},
+		},
+	}).One(&result)
+
+	if err == nil {
+		err = bcrypt.CompareHashAndPassword([]byte(result.Password), []byte(password))
+	}
+
+	return result, err
+}
+
+func (data *data) GetAuthByThirdParty(thirdParty string, token string) (domain.AuthEntity, error) {
+	var query bson.M
+	if thirdParty == "facebook" {
+		query = bson.M{"facebook_token": token}
+	} else if thirdParty == "google" {
+		query = bson.M{"google_token": token}
+	}
+
+	var result domain.AuthEntity
+	err := data.collection.Find(query).One(&result)
 	return result, err
 }
 
 func (data *data) CreateAuth(obj domain.AuthEntity) (string, error) {
-	user, err := data.client.GetUser(context.Background(), obj.FaID)
-
-	obj.ID = bson.NewObjectId()
-	obj.Email = user.Email
-	obj.Phone = user.PhoneNumber
-	obj.CreatedDate = time.Now()
-	err = data.collection.Insert(obj)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(obj.Password), bcrypt.DefaultCost)
+	if err == nil {
+		obj.ID = bson.NewObjectId()
+		obj.Password = string(hashedPassword)
+		obj.CreatedDate = time.Now()
+		err = data.collection.Insert(obj)
+	}
 
 	return obj.ID.Hex(), err
 }
